@@ -80,6 +80,7 @@ public class MotorPHPayrollSystem {
     static String[] employeeNames = new String[MAX_EMPLOYEES];
     static String[] employeeBirthdays = new String[MAX_EMPLOYEES];
     static double[] employeeHourlyRates = new double[MAX_EMPLOYEES];
+    static double[] employeeBasicSalaries = new double[MAX_EMPLOYEES];
 
     // ====================================
     // ATTENDANCE STORAGE (PARALLEL ARRAYS)
@@ -103,7 +104,16 @@ public class MotorPHPayrollSystem {
     static LocalDate[] attendanceDates = new LocalDate[MAX_ATTENDANCE_RECORDS];
     static LocalTime[] attendanceTimeIns = new LocalTime[MAX_ATTENDANCE_RECORDS];
     static LocalTime[] attendanceTimeOuts = new LocalTime[MAX_ATTENDANCE_RECORDS];
-
+    
+    // =================
+    // CSV File Location
+    // =================
+    
+    static final String EMPLOYEE_DETAILS_FILE = "resources/MotorPH_Employee_Data_Employee_Details.csv";
+    static final String ATTENDANCE_RECORD_FILE = "resources/MotorPH_Employee_Data_Attendance_Record.csv";
+    
+    
+    
     // ==============
     // LOGIN SETTINGS
     // ==============
@@ -156,7 +166,7 @@ public class MotorPHPayrollSystem {
         Scanner inputScanner = new Scanner(System.in);
         
         System.out.println("=== MotorPH Basic Payroll System ===");
-        if (!loadCsvData()){
+        if (!loadEmployeeDetailsCsv() || !loadAttendanceRecordsCsv()) {
             System.out.println("Program terminated due to CSV read error.");
             return;
         }
@@ -201,7 +211,7 @@ public class MotorPHPayrollSystem {
         // Ask for the Password
         System.out.print("Password: ");
         String enteredPassword = inputScanner.nextLine().trim();
-        // Check if the Username placed is valid to employee or payroll_staff
+        // Check if the Username placed is valid to EMPLOYEE or PAYROLL_STAFF
         boolean validUsername = enteredUsername.equals(EMPLOYEE_USERNAME)
                 || enteredUsername.equals(PAYROLL_USERNAME);
         // Check if the Password placed is valid to 12345
@@ -392,6 +402,8 @@ public class MotorPHPayrollSystem {
         // Find the hourly rate of the employee if existing employee number
         
         double hourlyRate = employeeHourlyRates[employeeIndex];
+        
+        double basicSalary  = employeeBasicSalaries[employeeIndex];
 
         // Loop method to find the data and process it for a specific month till the end of the year or the month of december
         for (int monthNumber = 6; monthNumber <= 12; monthNumber++) {
@@ -420,15 +432,14 @@ public class MotorPHPayrollSystem {
             double firstCutoffGross = firstCutoffHours * hourlyRate;
             // Total of the Second Cutoff
             double secondCutoffGross = secondCutoffHours * hourlyRate;
-            // Total Monthly Gross
-            double combinedMonthlyGross = firstCutoffGross + secondCutoffGross;
             // Define the deduction on the computation
-            double sssDeduction = computeSSS(combinedMonthlyGross);
-            double philHealthDeduction = computePhilHealth(combinedMonthlyGross);
-            double pagIbigDeduction = computePagIbig(combinedMonthlyGross);
-            double incomeTaxDeduction = computeIncomeTax(combinedMonthlyGross);
+            double sssDeduction = computeSSS(basicSalary);
+            double philHealthDeduction = computePhilHealth(basicSalary);
+            double pagIbigDeduction = computePagIbig(basicSalary);
+            double incomeTaxDeduction = computeIncomeTax(basicSalary * 12);
+            double monthlyTaxDeduction = incomeTaxDeduction / 12;
             // Add all deductions
-            double totalMonthlyDeductions = sssDeduction + philHealthDeduction + pagIbigDeduction + incomeTaxDeduction;
+            double totalMonthlyDeductions = sssDeduction + philHealthDeduction + pagIbigDeduction + monthlyTaxDeduction;
             // First Cutoff no deductions
             double firstCutoffNet = firstCutoffGross;
             // Second Cutoff with deductions
@@ -449,13 +460,14 @@ public class MotorPHPayrollSystem {
             System.out.println("======================================");
             System.out.println("Total Hours Worked: " + secondCutoffHours);
             System.out.println("Gross Salary: " + secondCutoffGross);
+            System.out.println("Net Salary: " + secondCutoffNet);
             System.out.println("======================================");
             System.out.println("Tax Breakdown: ");
             System.out.println("======================================");
             System.out.println("SSS: " + sssDeduction);
             System.out.println("PhilHealth: " + philHealthDeduction);
             System.out.println("Pag-IBIG: " + pagIbigDeduction);
-            System.out.println("Tax: " + incomeTaxDeduction);
+            System.out.println("Tax: " + monthlyTaxDeduction);
             System.out.println("======================================");
             // Total Deductions and Netsalary for the month
             System.out.println("Total Deductions: " + totalMonthlyDeductions);
@@ -480,28 +492,40 @@ public class MotorPHPayrollSystem {
     then adds up the valid daily work hours.
     */
     static double computeTotalHoursForPeriod(int employeeNumber, LocalDate startDate, LocalDate endDate) {
-        double accumulatedHours = 0.0;
+    double accumulatedHours = 0.0;
 
-        for (int i = 0; i < attendanceCount; i++) {
-            if (attendanceEmployeeNumbers[i] != employeeNumber) {
-                continue;
-            }
+    // Binary search for the first record of this employee
+    int low = 0, high = attendanceCount - 1;
+    int startIndex = -1;
 
-            LocalDate attendanceDate = attendanceDates[i];
-
-            if (attendanceDate == null) {
-                continue;
-            }
-
-            if (attendanceDate.isBefore(startDate) || attendanceDate.isAfter(endDate)) {
-                continue;
-            }
-
-            accumulatedHours += computeDailyWorkedHours(attendanceTimeIns[i], attendanceTimeOuts[i]);
+    while (low <= high) {
+        int mid = (low + high) / 2;
+        if (attendanceEmployeeNumbers[mid] == employeeNumber &&
+            !attendanceDates[mid].isBefore(startDate)) {
+            startIndex = mid;
+            high = mid - 1; // keep searching left
+        } else if (attendanceEmployeeNumbers[mid] < employeeNumber ||
+                  (attendanceEmployeeNumbers[mid] == employeeNumber &&
+                   attendanceDates[mid].isBefore(startDate))) {
+            low = mid + 1;
+        } else {
+            high = mid - 1;
         }
-
-        return accumulatedHours;
     }
+
+    // If no records found, return 0
+    if (startIndex == -1) return 0.0;
+
+    // Traverse forward until dates exceed endDate or employee changes
+    for (int i = startIndex; i < attendanceCount; i++) {
+        if (attendanceEmployeeNumbers[i] != employeeNumber) break;
+        if (attendanceDates[i].isAfter(endDate)) break;
+
+        accumulatedHours += computeDailyWorkedHours(attendanceTimeIns[i], attendanceTimeOuts[i]);
+    }
+
+    return accumulatedHours;
+}
 
     /*
     Computes the number of valid worked hours for one attendance row.
@@ -550,94 +574,162 @@ public class MotorPHPayrollSystem {
     Computes SSS deduction based on monthly gross salary.
     Returns 0 if the salary is not positive.
     */
-    static double computeSSS(double monthlyGrossSalary) {
-        if (monthlyGrossSalary <= 0) {
-            return 0.0;
-        }
-        return monthlyGrossSalary * SSS_PERCENTAGE;
-    }
+    static double computeSSS(double monthlySalary) {
+    if (monthlySalary <= 0) return 0.0;
+    // Clamp salary to MSC range (₱5,000–₱35,000)
+    double msc = Math.min(Math.max(monthlySalary, 5000), 35000);
+    return msc * 0.05; // employee share
+}
 
     /*
     Computes PhilHealth deduction based on monthly gross salary.
     Returns 0 if the salary is not positive.
     */
-    static double computePhilHealth(double monthlyGrossSalary) {
-        if (monthlyGrossSalary <= 0) {
-            return 0.0;
-        }
-        return monthlyGrossSalary * PHILHEALTH_PERCENTAGE;
-    }
+    static double computePhilHealth(double monthlySalary) {
+    if (monthlySalary <= 0) return 0.0;
+    double premium = monthlySalary * 0.05;
+    premium = Math.max(500, Math.min(premium, 5000));
+    return premium / 2; // employee share
+}
 
     /*
     Computes Pag-IBIG deduction.
     This version uses a fixed amount when salary is valid.
     */
-    static double computePagIbig(double monthlyGrossSalary) {
-        if (monthlyGrossSalary <= 0) {
-            return 0.0;
-        }
-        return PAGIBIG_FIXED_AMOUNT;
-    }
+    static double computePagIbig(double monthlySalary) {
+    if (monthlySalary <= 0) return 0.0;
+    return Math.min(monthlySalary * 0.02, 100.0);
+}
 
     /*
     Computes income tax deduction based on monthly gross salary.
     Returns 0 if the salary is not positive.
     */
-    static double computeIncomeTax(double monthlyGrossSalary) {
-        if (monthlyGrossSalary <= 0) {
-            return 0.0;
-        }
-        return monthlyGrossSalary * INCOME_TAX_PERCENTAGE;
-    }
+    static double computeIncomeTax(double annualIncome) {
+        if (annualIncome <= 250000) return 0.0;
+        else if (annualIncome <= 400000) return (annualIncome - 250000) * 0.20;
+        else if (annualIncome <= 800000) return 30000 + (annualIncome - 400000) * 0.25;
+        else if (annualIncome <= 2000000) return 130000 + (annualIncome - 800000) * 0.30;
+        else return 490000 + (annualIncome - 2000000) * 0.35;
+}
 
     // ===================
     // CSV LOADING METHODS
     // ===================
 
-    /*
-    Opens the CSV file, reads each line, and sends each row
-    to processCsvRow() for parsing and storage.
-    
-    It also checks whether the first row is a header row.
-    */
-    static boolean loadCsvData() {
-        
-        String filePath = "motorph_data.csv";
-        
-        try (BufferedReader csvReader = new BufferedReader(new FileReader(filePath))) {
+  
+    static boolean loadEmployeeDetailsCsv() {
+    try (BufferedReader csvReader = new BufferedReader(new FileReader(EMPLOYEE_DETAILS_FILE))) {
 
-            String currentLine = csvReader.readLine();
+        String currentLine = csvReader.readLine(); // skip header
 
-            if (currentLine == null) {
-                System.out.println("CSV is empty.");
-                return false;
-            }
-
-            boolean hasHeaderRow = currentLine.toLowerCase().contains("employeeno")
-                    || currentLine.toLowerCase().contains("employee")
-                    || currentLine.toLowerCase().contains("hourlyrate");
-
-            if (!hasHeaderRow) {
-                processCsvRow(currentLine);
-            }
-
-            while ((currentLine = csvReader.readLine()) != null) {
-                if (currentLine.trim().isEmpty()) {
-                    continue;
-                }
-                processCsvRow(currentLine);
-            }
-
-            System.out.println("Loaded employees: " + employeeCount);
-            System.out.println("Loaded attendance records: " + attendanceCount);
-            return true;
-
-        } catch (IOException e) {
-            System.out.println("Error reading CSV: " + e.getMessage());
+        if (currentLine == null) {
+            System.out.println("Employee details CSV is empty.");
             return false;
         }
+
+        while ((currentLine = csvReader.readLine()) != null) {
+            if (currentLine.trim().isEmpty()) {
+                continue;
+            }
+            processEmployeeDetailsRow(currentLine);
+        }
+
+        System.out.println("Loaded employees: " + employeeCount);
+        return true;
+
+    } catch (IOException e) {
+        System.out.println("Error reading employee details CSV: " + e.getMessage());
+        return false;
+    }
+}
+    static boolean loadAttendanceRecordsCsv() {
+    try (BufferedReader csvReader = new BufferedReader(new FileReader(ATTENDANCE_RECORD_FILE))) {
+
+        String currentLine = csvReader.readLine(); // skip header
+
+        if (currentLine == null) {
+            System.out.println("Attendance record CSV is empty.");
+            return false;
+        }
+
+        while ((currentLine = csvReader.readLine()) != null) {
+            if (currentLine.trim().isEmpty()) {
+                continue;
+            }
+            processAttendanceRow(currentLine);
+        }
+
+        // ✅ Sort after loading so binary search works
+        sortAttendanceRecords();
+
+        System.out.println("Loaded attendance records: " + attendanceCount);
+        return true;
+
+    } catch (IOException e) {
+        System.out.println("Error reading attendance record CSV: " + e.getMessage());
+        return false;
+    }
+}
+    static void sortAttendanceRecords() {
+    for (int i = 0; i < attendanceCount - 1; i++) {
+        for (int j = i + 1; j < attendanceCount; j++) {
+            if (attendanceEmployeeNumbers[i] > attendanceEmployeeNumbers[j] ||
+               (attendanceEmployeeNumbers[i] == attendanceEmployeeNumbers[j] &&
+                attendanceDates[i].isAfter(attendanceDates[j]))) {
+
+                // swap employee number
+                int tempNum = attendanceEmployeeNumbers[i];
+                attendanceEmployeeNumbers[i] = attendanceEmployeeNumbers[j];
+                attendanceEmployeeNumbers[j] = tempNum;
+
+                // swap date
+                LocalDate tempDate = attendanceDates[i];
+                attendanceDates[i] = attendanceDates[j];
+                attendanceDates[j] = tempDate;
+
+                // swap time in
+                LocalTime tempIn = attendanceTimeIns[i];
+                attendanceTimeIns[i] = attendanceTimeIns[j];
+                attendanceTimeIns[j] = tempIn;
+
+                // swap time out
+                LocalTime tempOut = attendanceTimeOuts[i];
+                attendanceTimeOuts[i] = attendanceTimeOuts[j];
+                attendanceTimeOuts[j] = tempOut;
+            }
+        }
+    }
+}
+    
+static void processEmployeeDetailsRow(String csvLine) {
+    String[] columnValues = csvLine.split(",(?=(?:[^\"]*\"[^\"]*\")*[^\"]*$)", -1);
+
+    if (columnValues.length < 19) {
+        return;
     }
 
+    int employeeNumber = parseIntegerSafely(columnValues[0]);
+    String lastName = columnValues[1].trim();
+    String firstName = columnValues[2].trim();
+    String completeName = firstName + " " + lastName;
+    String birthday = columnValues[3].trim();
+
+    // Hourly Rate and basic salary
+    double basicSalary = parseDoubleSafely(columnValues[13].trim());
+    double hourlyRate = parseDoubleSafely(columnValues[18].trim());
+
+    int existingEmployeeIndex = findEmployeeIndex(employeeNumber);
+
+    if (existingEmployeeIndex == -1 && employeeCount < MAX_EMPLOYEES) {
+        employeeNumbers[employeeCount] = employeeNumber;
+        employeeNames[employeeCount] = completeName;
+        employeeBirthdays[employeeCount] = birthday;
+        employeeBasicSalaries[employeeCount] = basicSalary;
+        employeeHourlyRates[employeeCount] = hourlyRate;
+        employeeCount++;
+    }
+}
     /*
     Reads one line from the CSV and splits it into fields.
     
@@ -649,49 +741,32 @@ public class MotorPHPayrollSystem {
     4 = Date
     5 = Time In
     6 = Time Out
-    7 = Hourly Rate
+    
     
     This method stores:
     employee master data if the employee is not yet in the employee arrays
     attendance data for every valid row
-     */
-    static void processCsvRow(String csvLine) {
-        String[] columnValues = csvLine.split(",", -1);
+    */
+    static void processAttendanceRow(String csvLine) {
+    String[] columnValues = csvLine.split(",", -1);
 
-        if (columnValues.length < 8) {
-            return;
-        }
-
-        int employeeNumber = parseIntegerSafely(columnValues[0]);
-        String lastName = columnValues[1].trim();
-        String firstName = columnValues[2].trim();
-        String completeName = firstName + " " + lastName;
-
-        String birthday = columnValues[3].trim();
-        double hourlyRate = parseDoubleSafely(columnValues[7].trim());
-
-        LocalDate attendanceDate = parseDateValue(columnValues[4].trim());
-        LocalTime timeIn = parseTimeValue(columnValues[5].trim());
-        LocalTime timeOut = parseTimeValue(columnValues[6].trim());
-
-        int existingEmployeeIndex = findEmployeeIndex(employeeNumber);
-
-        if (existingEmployeeIndex == -1) {
-            employeeNumbers[employeeCount] = employeeNumber;
-            employeeNames[employeeCount] = completeName;
-            employeeBirthdays[employeeCount] = birthday;
-            employeeHourlyRates[employeeCount] = hourlyRate;
-            employeeCount++;
-        }
-
-        if (attendanceCount < MAX_ATTENDANCE_RECORDS && attendanceDate != null) {
-            attendanceEmployeeNumbers[attendanceCount] = employeeNumber;
-            attendanceDates[attendanceCount] = attendanceDate;
-            attendanceTimeIns[attendanceCount] = timeIn;
-            attendanceTimeOuts[attendanceCount] = timeOut;
-            attendanceCount++;
-        }
+    if (columnValues.length < 6) {
+        return;
     }
+
+    int employeeNumber = parseIntegerSafely(columnValues[0]);
+    LocalDate attendanceDate = parseDateValue(columnValues[3].trim());
+    LocalTime timeIn = parseTimeValue(columnValues[4].trim());
+    LocalTime timeOut = parseTimeValue(columnValues[5].trim());
+
+    if (attendanceCount < MAX_ATTENDANCE_RECORDS && attendanceDate != null) {
+        attendanceEmployeeNumbers[attendanceCount] = employeeNumber;
+        attendanceDates[attendanceCount] = attendanceDate;
+        attendanceTimeIns[attendanceCount] = timeIn;
+        attendanceTimeOuts[attendanceCount] = timeOut;
+        attendanceCount++;
+    }
+}
 
     // ==========================
     // SEARCH AND PARSING METHODS
@@ -729,12 +804,13 @@ public class MotorPHPayrollSystem {
     If conversion fails, it returns 0.0.
     */
     static double parseDoubleSafely(String value) {
-        try {
-            return Double.parseDouble(value.trim());
-        } catch (NumberFormatException e) {
-            return 0.0;
-        }
+    try {
+        value = value.trim().replace("\"", "").replace(",", "");
+        return Double.parseDouble(value);
+    } catch (NumberFormatException e) {
+        return 0.0;
     }
+}
 
     /*
     Tries to convert a text date into a LocalDate value.
