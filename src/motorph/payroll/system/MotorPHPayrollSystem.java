@@ -467,7 +467,7 @@ public class MotorPHPayrollSystem {
             System.out.println("SSS: " + sssDeduction);
             System.out.println("PhilHealth: " + philHealthDeduction);
             System.out.println("Pag-IBIG: " + pagIbigDeduction);
-            System.out.println("Tax: " + monthlyTaxDeduction);
+            System.out.println("IncomeTax: " + monthlyTaxDeduction);
             System.out.println("======================================");
             // Total Deductions and Netsalary for the month
             System.out.println("Total Deductions: " + totalMonthlyDeductions);
@@ -619,30 +619,31 @@ public class MotorPHPayrollSystem {
 
   
     static boolean loadEmployeeDetailsCsv() {
-    try (BufferedReader csvReader = new BufferedReader(new FileReader(EMPLOYEE_DETAILS_FILE))) {
+        try (BufferedReader csvReader = new BufferedReader(new FileReader(EMPLOYEE_DETAILS_FILE))) {
+            String currentLine = csvReader.readLine(); // skip header
+            if (currentLine == null) {
+                System.out.println("Employee details CSV is empty.");
+                return false;
+            }
 
-        String currentLine = csvReader.readLine(); // skip header
+            while ((currentLine = csvReader.readLine()) != null) {
+                if (currentLine.trim().isEmpty()) {
+                    continue;
+                }
+                processEmployeeDetailsRow(currentLine);
+            }
 
-        if (currentLine == null) {
-            System.out.println("Employee details CSV is empty.");
+            // Sort employees after loading
+            sortEmployees();
+
+            System.out.println("Loaded employees: " + employeeCount);
+            return true;
+
+        } catch (IOException e) {
+            System.out.println("Error reading employee details CSV: " + e.getMessage());
             return false;
         }
-
-        while ((currentLine = csvReader.readLine()) != null) {
-            if (currentLine.trim().isEmpty()) {
-                continue;
-            }
-            processEmployeeDetailsRow(currentLine);
-        }
-
-        System.out.println("Loaded employees: " + employeeCount);
-        return true;
-
-    } catch (IOException e) {
-        System.out.println("Error reading employee details CSV: " + e.getMessage());
-        return false;
     }
-}
     static boolean loadAttendanceRecordsCsv() {
     try (BufferedReader csvReader = new BufferedReader(new FileReader(ATTENDANCE_RECORD_FILE))) {
 
@@ -697,6 +698,38 @@ public class MotorPHPayrollSystem {
                 LocalTime tempOut = attendanceTimeOuts[i];
                 attendanceTimeOuts[i] = attendanceTimeOuts[j];
                 attendanceTimeOuts[j] = tempOut;
+            }
+        }
+    }
+}
+    static void sortEmployees() {
+    for (int i = 0; i < employeeCount - 1; i++) {
+        for (int j = i + 1; j < employeeCount; j++) {
+            if (employeeNumbers[i] > employeeNumbers[j]) {
+                // swap employeeNumbers
+                int tempNum = employeeNumbers[i];
+                employeeNumbers[i] = employeeNumbers[j];
+                employeeNumbers[j] = tempNum;
+
+                // swap names
+                String tempName = employeeNames[i];
+                employeeNames[i] = employeeNames[j];
+                employeeNames[j] = tempName;
+
+                // swap birthdays
+                String tempBirthday = employeeBirthdays[i];
+                employeeBirthdays[i] = employeeBirthdays[j];
+                employeeBirthdays[j] = tempBirthday;
+
+                // swap basic salaries
+                double tempBasic = employeeBasicSalaries[i];
+                employeeBasicSalaries[i] = employeeBasicSalaries[j];
+                employeeBasicSalaries[j] = tempBasic;
+
+                // swap hourly rates
+                double tempRate = employeeHourlyRates[i];
+                employeeHourlyRates[i] = employeeHourlyRates[j];
+                employeeHourlyRates[j] = tempRate;
             }
         }
     }
@@ -778,14 +811,21 @@ static void processEmployeeDetailsRow(String csvLine) {
     If not found, returns -1.
     */
     static int findEmployeeIndex(int employeeNumber) {
-        for (int i = 0; i < employeeCount; i++) {
-            if (employeeNumbers[i] == employeeNumber) {
-                return i;
+        int low = 0;
+        int high = employeeCount - 1;
+
+        while (low <= high) {
+            int mid = (low + high) / 2;
+            if (employeeNumbers[mid] == employeeNumber) {
+                return mid;
+            } else if (employeeNumbers[mid] < employeeNumber) {
+                low = mid + 1;
+            } else {
+                high = mid - 1;
             }
         }
-        return -1;
+        return -1; // not found
     }
-
     /*
     Safely converts a String into an int.
     If conversion fails, it returns Integer.MIN_VALUE
