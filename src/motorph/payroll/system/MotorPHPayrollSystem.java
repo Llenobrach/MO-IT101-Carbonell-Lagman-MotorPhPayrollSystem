@@ -15,6 +15,8 @@ import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Scanner;
+import java.util.Arrays;
+import java.util.Comparator;
 
 /*
 @author crbnl
@@ -146,21 +148,6 @@ public class MotorPHPayrollSystem {
     static final LocalTime WORKDAY_START = LocalTime.of(8, 0);
     static final LocalTime WORKDAY_END = LocalTime.of(17, 0);
     static final LocalTime GRACE_LIMIT = LocalTime.of(8, 5);
-
-    // ==================
-    // DEDUCTION SETTINGS
-    // ==================
-
-    /*
-    These are sample deduction values used for payroll computation.
-    They are based on the employee's monthly gross salary.
-     
-    monthly gross salary = first cutoff gross + second cutoff gross
-    */
-    static final double SSS_PERCENTAGE = 0.05;
-    static final double PHILHEALTH_PERCENTAGE = 0.025;
-    static final double PAGIBIG_FIXED_AMOUNT = 100.00;
-    static final double INCOME_TAX_PERCENTAGE = 0.10;
 
     public static void main(String[] args) {
         Scanner inputScanner = new Scanner(System.in);
@@ -386,9 +373,9 @@ public class MotorPHPayrollSystem {
     Second cutoff = 16th to end of month
     
     Payroll rule applied:
-    First cutoff shows gross salary and net salary with no deductions
-    Second cutoff applies all monthly deductions
-    Deductions are based on monthly gross salary, not just the second cutoff
+    First cutoff shows gross salary and net salary with no deductions.
+    Second cutoff applies all monthly deductions.
+    Deductions are based on the employee's basic monthly salary, not on actual gross earned.
     */
     static void printPayrollRecordsForEmployee(int employeeNumber) {
         
@@ -444,8 +431,10 @@ public class MotorPHPayrollSystem {
             double firstCutoffNet = firstCutoffGross;
             // Second Cutoff with deductions
             double secondCutoffNet = secondCutoffGross - totalMonthlyDeductions;
+            //syntax if secondcutoffnet is 0
             // Total Net Salary of the Month
             double totalMonthlyNetSalary = firstCutoffNet + secondCutoffNet;
+            
             
             // First Cut Off Display
             System.out.println("======================================");
@@ -571,8 +560,8 @@ public class MotorPHPayrollSystem {
     // =================
 
     /*
-    Computes SSS deduction based on monthly gross salary.
-    Returns 0 if the salary is not positive.
+    Computes SSS deduction based on the employee's basic monthly salary.
+    Salary is clamped to the MSC range (₱5,000–₱35,000).
     */
     static double computeSSS(double monthlySalary) {
     if (monthlySalary <= 0) return 0.0;
@@ -672,67 +661,71 @@ public class MotorPHPayrollSystem {
         return false;
     }
 }
+    /*
+    Sorts attendance records by employee number, then by date.
+    This ensures binary search can locate attendance records correctly.
+    All parallel arrays (dates, time in, time out) are swapped together to keep data aligned.
+    */
     static void sortAttendanceRecords() {
-    for (int i = 0; i < attendanceCount - 1; i++) {
-        for (int j = i + 1; j < attendanceCount; j++) {
-            if (attendanceEmployeeNumbers[i] > attendanceEmployeeNumbers[j] ||
-               (attendanceEmployeeNumbers[i] == attendanceEmployeeNumbers[j] &&
-                attendanceDates[i].isAfter(attendanceDates[j]))) {
-
-                // swap employee number
-                int tempNum = attendanceEmployeeNumbers[i];
-                attendanceEmployeeNumbers[i] = attendanceEmployeeNumbers[j];
-                attendanceEmployeeNumbers[j] = tempNum;
-
-                // swap date
-                LocalDate tempDate = attendanceDates[i];
-                attendanceDates[i] = attendanceDates[j];
-                attendanceDates[j] = tempDate;
-
-                // swap time in
-                LocalTime tempIn = attendanceTimeIns[i];
-                attendanceTimeIns[i] = attendanceTimeIns[j];
-                attendanceTimeIns[j] = tempIn;
-
-                // swap time out
-                LocalTime tempOut = attendanceTimeOuts[i];
-                attendanceTimeOuts[i] = attendanceTimeOuts[j];
-                attendanceTimeOuts[j] = tempOut;
-            }
+        // Create index array
+        Integer[] indices = new Integer[attendanceCount];
+        for (int i = 0; i < attendanceCount; i++) {
+            indices[i] = i;
         }
+
+        // Sort indices by employee number, then by date
+        Arrays.sort(indices, Comparator
+                .comparingInt((Integer i) -> attendanceEmployeeNumbers[i])
+                .thenComparing(i -> attendanceDates[i]));
+
+        // Rebuild arrays in sorted order
+        int[] newEmployeeNumbers = new int[attendanceCount];
+        LocalDate[] newDates = new LocalDate[attendanceCount];
+        LocalTime[] newTimeIns = new LocalTime[attendanceCount];
+        LocalTime[] newTimeOuts = new LocalTime[attendanceCount];
+
+        for (int i = 0; i < attendanceCount; i++) {
+            int idx = indices[i];
+            newEmployeeNumbers[i] = attendanceEmployeeNumbers[idx];
+            newDates[i] = attendanceDates[idx];
+            newTimeIns[i] = attendanceTimeIns[idx];
+            newTimeOuts[i] = attendanceTimeOuts[idx];
+        }
+
+        attendanceEmployeeNumbers = newEmployeeNumbers;
+        attendanceDates = newDates;
+        attendanceTimeIns = newTimeIns;
+        attendanceTimeOuts = newTimeOuts;
     }
-}
+    
     static void sortEmployees() {
-    for (int i = 0; i < employeeCount - 1; i++) {
-        for (int j = i + 1; j < employeeCount; j++) {
-            if (employeeNumbers[i] > employeeNumbers[j]) {
-                // swap employeeNumbers
-                int tempNum = employeeNumbers[i];
-                employeeNumbers[i] = employeeNumbers[j];
-                employeeNumbers[j] = tempNum;
-
-                // swap names
-                String tempName = employeeNames[i];
-                employeeNames[i] = employeeNames[j];
-                employeeNames[j] = tempName;
-
-                // swap birthdays
-                String tempBirthday = employeeBirthdays[i];
-                employeeBirthdays[i] = employeeBirthdays[j];
-                employeeBirthdays[j] = tempBirthday;
-
-                // swap basic salaries
-                double tempBasic = employeeBasicSalaries[i];
-                employeeBasicSalaries[i] = employeeBasicSalaries[j];
-                employeeBasicSalaries[j] = tempBasic;
-
-                // swap hourly rates
-                double tempRate = employeeHourlyRates[i];
-                employeeHourlyRates[i] = employeeHourlyRates[j];
-                employeeHourlyRates[j] = tempRate;
-            }
-        }
+    Integer[] indices = new Integer[employeeCount];
+    for (int i = 0; i < employeeCount; i++) {
+        indices[i] = i;
     }
+
+    Arrays.sort(indices, Comparator.comparingInt(i -> employeeNumbers[i]));
+
+    int[] newNumbers = new int[employeeCount];
+    String[] newNames = new String[employeeCount];
+    String[] newBirthdays = new String[employeeCount];
+    double[] newBasicSalaries = new double[employeeCount];
+    double[] newHourlyRates = new double[employeeCount];
+
+    for (int i = 0; i < employeeCount; i++) {
+        int idx = indices[i];
+        newNumbers[i] = employeeNumbers[idx];
+        newNames[i] = employeeNames[idx];
+        newBirthdays[i] = employeeBirthdays[idx];
+        newBasicSalaries[i] = employeeBasicSalaries[idx];
+        newHourlyRates[i] = employeeHourlyRates[idx];
+    }
+
+    employeeNumbers = newNumbers;
+    employeeNames = newNames;
+    employeeBirthdays = newBirthdays;
+    employeeBasicSalaries = newBasicSalaries;
+    employeeHourlyRates = newHourlyRates;
 }
     
 static void processEmployeeDetailsRow(String csvLine) {
@@ -751,9 +744,8 @@ static void processEmployeeDetailsRow(String csvLine) {
     // Hourly Rate and basic salary
     double basicSalary = parseDoubleSafely(columnValues[13].trim());
     double hourlyRate = parseDoubleSafely(columnValues[18].trim());
-
-    int existingEmployeeIndex = findEmployeeIndex(employeeNumber);
-
+    
+    int existingEmployeeIndex = findEmployeeIndexLinear(employeeNumber);
     if (existingEmployeeIndex == -1 && employeeCount < MAX_EMPLOYEES) {
         employeeNumbers[employeeCount] = employeeNumber;
         employeeNames[employeeCount] = completeName;
@@ -810,6 +802,14 @@ static void processEmployeeDetailsRow(String csvLine) {
     If found, returns the array index.
     If not found, returns -1.
     */
+    static int findEmployeeIndexLinear(int employeeNumber) {
+    for (int i = 0; i < employeeCount; i++) {
+        if (employeeNumbers[i] == employeeNumber) {
+            return i;
+        }
+    }
+    return -1;
+}
     static int findEmployeeIndex(int employeeNumber) {
         int low = 0;
         int high = employeeCount - 1;
