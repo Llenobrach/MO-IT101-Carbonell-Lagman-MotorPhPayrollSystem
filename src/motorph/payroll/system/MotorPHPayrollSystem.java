@@ -365,17 +365,17 @@ public class MotorPHPayrollSystem {
     // =========================
     
     /*
-    This method displays payroll records from June to December
-    for the selected employee.
-    
-    For every month:
-    First cutoff = 1st to 15th
-    Second cutoff = 16th to end of month
-    
-    Payroll rule applied:
-    First cutoff shows gross salary and net salary with no deductions.
-    Second cutoff applies all monthly deductions.
-    Deductions are based on the employee's basic monthly salary, not on actual gross earned.
+    Payroll records are displayed from June to December.
+
+    Cutoff rules:
+    - First cutoff (1st–15th): gross salary and net salary with no deductions.
+    - Second cutoff (16th–end): gross salary minus all monthly deductions.
+
+    Deductions are based on the employee’s basic monthly salary,
+    not on actual gross earned from hours worked. This matches statutory rules
+    (SSS, PhilHealth, Pag‑IBIG, and TRAIN Law tax are bracket‑based).
+
+    This ensures compliance: deductions remain consistent even if attendance varies.
     */
     static void printPayrollRecordsForEmployee(int employeeNumber) {
         
@@ -473,12 +473,18 @@ public class MotorPHPayrollSystem {
     // ====================
 
     /*
-    Computes the total hours worked by one employee
-    between two dates, inclusive.
-    
-    It scans all loaded attendance rows, selects only the records
-    belonging to the chosen employee and date range,
-    then adds up the valid daily work hours.
+    computeTotalHoursForPeriod:
+    Computes total hours worked by one employee between two dates.
+    Uses binary search to find the first relevant record, then scans forward
+    until the end date. This is faster than scanning all records (O(N log N) vs O(N)).
+
+    computeDailyWorkedHours:
+    Adjusts time in/out to company rules:
+    - Start time = 8:00 AM (or grace if ≤ 8:05).
+    - End time capped at 5:00 PM.
+    - If time out < time in, record counts as 0.
+    - Duration converted to hours.
+    This enforces MotorPH’s strict attendance policy.
     */
     static double computeTotalHoursForPeriod(int employeeNumber, LocalDate startDate, LocalDate endDate) {
     double accumulatedHours = 0.0;
@@ -560,8 +566,9 @@ public class MotorPHPayrollSystem {
     // =================
 
     /*
-    Computes SSS deduction based on the employee's basic monthly salary.
-    Salary is clamped to the MSC range (₱5,000–₱35,000).
+    CComputes SSS deduction based on the employee's basic monthly salary.
+    Salary is clamped to the MSC (Monthly Salary Credit) range ₱5,000–₱35,000.
+    Employee share is 5% of MSC
     */
     static double computeSSS(double monthlySalary) {
     if (monthlySalary <= 0) return 0.0;
@@ -571,7 +578,9 @@ public class MotorPHPayrollSystem {
 }
 
     /*
-    Computes PhilHealth deduction based on monthly gross salary.
+    CComputes PhilHealth deduction based on the employee's basic monthly salary.
+    Premium is 5% of salary, capped between ₱500 and ₱5,000.
+    Employee pays half of the premium (50%)
     Returns 0 if the salary is not positive.
     */
     static double computePhilHealth(double monthlySalary) {
@@ -582,8 +591,9 @@ public class MotorPHPayrollSystem {
 }
 
     /*
-    Computes Pag-IBIG deduction.
-    This version uses a fixed amount when salary is valid.
+    Computes Pag-IBIG deduction based on the employee's basic monthly salary.
+    Contribution is 2% of salary if above ₱1,500, otherwise 1%.
+    Capped at ₱100 maximum contribution.
     */
     static double computePagIbig(double monthlySalary) {
     if (monthlySalary <= 0) return 0.0;
@@ -591,8 +601,13 @@ public class MotorPHPayrollSystem {
 }
 
     /*
-    Computes income tax deduction based on monthly gross salary.
-    Returns 0 if the salary is not positive.
+    Computes income tax deduction based on annual taxable income (basic salary × 12).
+    Uses TRAIN Law tax brackets:
+    - ≤ ₱250,000: 0%
+    - ₱250,001–₱400,000: 20% of excess over ₱250,000
+    - ₱400,001–₱800,000: ₱30,000 + 25% of excess over ₱400,000
+    - ₱800,001–₱2,000,000: ₱130,000 + 30% of excess over ₱800,000
+    - ₱2,000,001–above: ₱490,000 + 35% of excess over ₱2,000,000
     */
     static double computeIncomeTax(double annualIncome) {
         if (annualIncome <= 250000) return 0.0;
@@ -662,9 +677,15 @@ public class MotorPHPayrollSystem {
     }
 }
     /*
+    sortEmployees:
+    Sorts employees by employee number in ascending order.
+    Rebuilds parallel arrays to keep data aligned.
+    Ensures binary search can find employees correctly.
+
+    sortAttendanceRecords:
     Sorts attendance records by employee number, then by date.
-    This ensures binary search can locate attendance records correctly.
-    All parallel arrays (dates, time in, time out) are swapped together to keep data aligned.
+    Rebuilds parallel arrays to keep data aligned.
+    Ensures binary search can find attendance records correctly.
     */
     static void sortAttendanceRecords() {
         // Create index array
