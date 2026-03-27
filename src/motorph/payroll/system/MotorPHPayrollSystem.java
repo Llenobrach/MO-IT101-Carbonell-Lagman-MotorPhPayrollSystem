@@ -351,7 +351,7 @@ public class MotorPHPayrollSystem {
 
     /*
     Prints the basic identifying information of one employee.
-    This is used before showing detailed payroll records.
+    This is used before showing detailed payroll records.git 
     */
     static void printEmployeeHeader(int employeeIndex) {
         System.out.println("\nEmployee #: " + employeeNumbers[employeeIndex]);
